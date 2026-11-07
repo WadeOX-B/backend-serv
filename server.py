@@ -3545,8 +3545,29 @@ async def api_upload_file(request):
     else:
         size_formatted = f"{size / (1024 * 1024):.1f} Mo"
 
+    # Sauvegarde permanente dans le Cloud CDN pour que les images, vidéos et musiques restent toujours accessibles
+    final_url = None
+    try:
+        async with aiohttp.ClientSession() as session:
+            data = aiohttp.FormData()
+            data.add_field("reqtype", "fileupload")
+            with open(file_path, "rb") as fp:
+                data.add_field("fileToUpload", fp.read(), filename=clean_base)
+            async with session.post("https://catbox.moe/user/api.php", data=data, timeout=aiohttp.ClientTimeout(total=25)) as cresp:
+                if cresp.status == 200:
+                    uploaded_url = (await cresp.text()).strip()
+                    if uploaded_url.startswith("http"):
+                        final_url = uploaded_url
+                        print(f"[CLOUD STORAGE] Fichier hébergé avec succès sur le CDN : {final_url}")
+    except Exception as ce:
+        print(f"[CLOUD STORAGE] Erreur téléversement CDN Catbox: {ce}")
+
+    if not final_url:
+        render_domain = os.getenv("RENDER_EXTERNAL_URL", "https://backend-serv-jw1r.onrender.com").rstrip("/")
+        final_url = f"{render_domain}{rel_url}"
+
     return web.json_response({
-        "url": rel_url,
+        "url": final_url,
         "filename": filename,
         "size": size,
         "size_formatted": size_formatted,
